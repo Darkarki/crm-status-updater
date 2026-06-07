@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 380px;
+      font-family: 'Segoe UI', Tahoma, sans-serif;
+      background: #f5f7fa;
+      color: #333;
+      padding: 16px;
+    }
+    h1 {
+      font-size: 16px;
+      color: #1a73e8;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    .section {
+      background: white;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .section h3 {
+      font-size: 13px;
+      color: #555;
+      margin-bottom: 8px;
+    }
+    label.file-label {
+      display: block;
+      background: #1a73e8;
+      color: white;
+      text-align: center;
+      padding: 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.2s;
+    }
+    label.file-label:hover { background: #1557b0; }
+    input[type="file"] { display: none; }
+    #file-name {
+      font-size: 12px;
+      color: #666;
+      margin-top: 6px;
+      text-align: center;
+    }
+    #excel-info {
+      font-size: 12px;
+      color: #2e7d32;
+      margin-top: 6px;
+      text-align: center;
+      display: none;
+    }
+    #start-btn {
+      display: block;
+      width: 100%;
+      padding: 12px;
+      background: #2e7d32;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #start-btn:hover { background: #1b5e20; }
+    #start-btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    #status {
+      margin-top: 12px;
+      font-size: 12px;
+      color: #555;
+      text-align: center;
+      min-height: 20px;
+    }
+    #log {
+      max-height: 200px;
+      overflow-y: auto;
+      font-size: 11px;
+      background: #f8f8f8;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      padding: 8px;
+      margin-top: 8px;
+      display: none;
+    }
+    .log-entry { margin-bottom: 4px; }
+    .log-success { color: #2e7d32; }
+    .log-skip { color: #888; }
+    .log-error { color: #c62828; }
+    .stats {
+      display: flex;
+      justify-content: space-around;
+      margin-top: 8px;
+    }
+    .stat {
+      text-align: center;
+    }
+    .stat-num {
+      font-size: 20px;
+      font-weight: bold;
+    }
+    .stat-label {
+      font-size: 11px;
+      color: #888;
+    }
+    .stat-green .stat-num { color: #2e7d32; }
+    .stat-gray .stat-num { color: #888; }
+    .stat-blue .stat-num { color: #1a73e8; }
+  </style>
+</head>
+<body>
+  <h1>עדכון סטטוס לפי דוח מובייל</h1>
+
+  <div class="section">
+    <h3>1. העלה קובץ אקסל</h3>
+    <label class="file-label" for="excel-file">בחר קובץ אקסל</label>
+    <input type="file" id="excel-file" accept=".xlsx,.xls">
+    <div id="file-name"></div>
+    <div id="excel-info"></div>
+  </div>
+
+  <div class="section">
+    <h3>2. הפעל עדכון</h3>
+    <button id="start-btn" disabled>התחל עדכון סטטוסים</button>
+    <button id="stop-btn" style="display:none;width:100%;padding:10px;background:#c62828;color:white;border:none;border-radius:6px;font-size:14px;font-weight:bold;cursor:pointer;margin-top:6px;">עצור</button>
+    <div id="status"></div>
+    <div class="stats" id="stats" style="display:none">
+      <div class="stat stat-green">
+        <div class="stat-num" id="stat-updated">0</div>
+        <div class="stat-label">עודכנו</div>
+      </div>
+      <div class="stat stat-gray">
+        <div class="stat-num" id="stat-skipped">0</div>
+        <div class="stat-label">לא נמצאו</div>
+      </div>
+      <div class="stat stat-blue">
+        <div class="stat-num" id="stat-total">0</div>
+        <div class="stat-label">סה"כ נבדקו</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="log"></div>
+
+  <script src="xlsx.full.min.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
