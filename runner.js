@@ -152,6 +152,18 @@
   (async () => { try {
     // wait for the table instead of a fixed delay (an empty last page simply has no rows)
     await until(() => findRows().length > 0, 20000, 200);
+    // DIAGNOSTIC SNAPSHOT: save this page (the real DOM after the CRM rendered it) to Downloads once per run,
+    // so the developer can see exactly how customer rows look. Remove when row detection is confirmed.
+    if (!stats.snapshotSaved) {
+      try {
+        await sleep(4000);
+        const blob = new Blob(['<!-- ' + location.href + ' -->' + String.fromCharCode(10) + document.documentElement.outerHTML], { type: 'text/html' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'crm-snapshot.html';
+        document.body.appendChild(a); a.click(); a.remove();
+        stats.snapshotSaved = true; save();
+        addLog('נשמר עותק של הדף ל-Downloads (crm-snapshot.html)', '#1a73e8');
+      } catch (e) { addLog('לא הצלחתי לשמור עותק: ' + e.message, '#c62828'); }
+    }
     setStatus('ממתין לטבלה...');
     await afterAjax(2500);
     // the table must stop changing for a full second before we read it
