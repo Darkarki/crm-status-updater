@@ -147,6 +147,11 @@
     const rows = [...document.querySelectorAll('tr.middle.info')];
     const url = new URL(window.location.href);
     const pg = parseInt(url.searchParams.get('pg') || '1');
+    // A NEW run always starts on page 1 (the tab may still sit on a page past the end from an earlier run -> 0 rows).
+    if (!stats.started) {
+      stats.started = true; save();
+      if (pg !== 1) { setStatus('מתחיל מעמוד 1...'); url.searchParams.set('pg', 1); await sleep(800); window.location.href = url.toString(); return; }
+    }
     addLog(`עמוד ${pg}: ${rows.length} שורות`, '#1a73e8');
 
     let updatedHere = 0, newHere = 0;
@@ -171,7 +176,10 @@
     }
     save();
 
-    if (rows.length === 0) return finish();
+    if (rows.length === 0) {
+      addLog(`עמוד ${pg} ריק (${document.querySelectorAll('table').length} טבלאות בדף)`, '#888');
+      return finish();
+    }
     // Updated rows leave this filtered list, so the next rows moved up into THIS page: check it again.
     // Only a page where nothing new was found moves on.
     if (updatedHere > 0) { setStatus(`עמוד ${pg}: ${updatedHere} עודכנו, בודק שוב את אותו עמוד`); await sleep(PACE.beforeNextPage); window.location.reload(); return; }
