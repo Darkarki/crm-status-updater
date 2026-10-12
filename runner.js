@@ -65,6 +65,19 @@
     return m ? m[1] : null;
   }
 
+  // Customer rows. The CRM's classic markup is tr.middle.info; if that is gone (markup change, or the rows come in
+  // later by AJAX), fall back to the innermost table rows that contain "קוד לקוח" and a status/modal link.
+  let rowMethod = '';
+  function findRows() {
+    const classic = [...document.querySelectorAll('tr.middle.info')];
+    if (classic.length) { rowMethod = 'tr.middle.info'; return classic; }
+    const hasCode = tr => /קוד\s*לקוח/.test(tr.textContent);
+    const cands = [...document.querySelectorAll('tr')].filter(tr => hasCode(tr) && (tr.querySelector('a[id*="status_select"], a[onclick*="change_status"], a[data-toggle="modal"]')));
+    const inner = cands.filter(tr => !cands.some(o => o !== tr && tr.contains(o)));
+    rowMethod = 'קוד לקוח';
+    return inner;
+  }
+
   const findModal = () => [...document.querySelectorAll('.modal')].find(m => m.offsetHeight > 0 && m.offsetWidth > 0) || null;
   const modalDropdowns = modal => modal.querySelectorAll('[class*="status_dropdown_"], [id^="status_dropdown_"]');
 
@@ -135,17 +148,17 @@
   // ---------------------------------------------------------------- main
   (async () => { try {
     // wait for the table instead of a fixed delay (an empty last page simply has no rows)
-    await until(() => document.querySelectorAll('tr.middle.info').length > 0 || document.readyState === 'complete' && Date.now() - performance.timing.domContentLoadedEventEnd > 2500, 15000);
+    await until(() => findRows().length > 0, 20000, 200);
     setStatus('ממתין לטבלה...');
     await afterAjax(2500);
     // the table must stop changing for a full second before we read it
     let last = -1, stableSince = Date.now();
     await until(() => {
-      const n = document.querySelectorAll('tr.middle.info').length;
+      const n = findRows().length;
       if (n !== last) { last = n; stableSince = Date.now(); }
       return Date.now() - stableSince >= PACE.tableStable;
     }, 8000, 150);
-    const rows = [...document.querySelectorAll('tr.middle.info')];
+    const rows = findRows();
     const url = new URL(window.location.href);
     const pg = parseInt(url.searchParams.get('pg') || '1');
     // A NEW run always starts on page 1 (the tab may still sit on a page past the end from an earlier run -> 0 rows).
@@ -153,7 +166,7 @@
       stats.started = true; save();
       if (pg !== 1) { setStatus('מתחיל מעמוד 1...'); url.searchParams.set('pg', 1); await sleep(800); window.location.href = url.toString(); return; }
     }
-    addLog(`עמוד ${pg}: ${rows.length} שורות, ${codes.size} קודים מהאקסל`, '#1a73e8');
+    addLog(`עמוד ${pg}: ${rows.length} שורות (${rowMethod}), ${codes.size} קודים מהאקסל`, '#1a73e8');
 
     let updatedHere = 0, newHere = 0;
     for (let i = 0; i < rows.length; i++) {
@@ -178,7 +191,8 @@
     save();
 
     if (rows.length === 0) {
-      addLog(`עמוד ${pg} ריק (${document.querySelectorAll('table').length} טבלאות בדף)`, '#888');
+      const trs = document.querySelectorAll('tr').length, withCode = [...document.querySelectorAll('tr')].filter(t => /קוד\s*לקוח/.test(t.textContent)).length;
+      addLog(`עמוד ${pg} ריק (${document.querySelectorAll('table').length} טבלאות, ${trs} שורות tr, ${withCode} עם "קוד לקוח")`, '#888');
       return finish();
     }
     // Updated rows leave this filtered list, so the next rows moved up into THIS page: check it again.
