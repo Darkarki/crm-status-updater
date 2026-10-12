@@ -24,7 +24,11 @@
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   // PACE: minimum pauses on top of "wait until the CRM is done" (too fast made the CRM skip pages and hang).
   // Raise these numbers if it still runs ahead of the CRM.
-  const PACE = { afterUpdate: 800, afterModalOpen: 700, afterModalClose: 600, beforeNextPage: 1500, tableStable: 1000 };
+  const PACE = { afterUpdate: 2500, afterModalOpen: 1500, afterModalClose: 1500, beforeNextPage: 4000, tableStable: 1500 };
+  const jitter = ms => ms + Math.round(Math.random() * ms * 0.4);          // +0..40% so it never fires on a fixed beat
+  // The lists (CRM filters) one run goes through, in order, and the line statuses that move to 74 "נמצא בדוח מובייל".
+  const FILTERS = [{ id: 250, name: 'פעיל ולא נמצא בדוחות' }, { id: 35, name: 'פעיל - לא לתגמול' }, { id: 63, name: 'נויד בהצלחה' }];
+  const SOURCE_STATUS = /פעיל\s*ולא\s*נמצא|פעיל\s*-\s*לא\s*לתגמול|נויד\s*בהצלחה/;
   async function until(fn, timeout = 10000, step = 80) {
     const t0 = Date.now();
     while (Date.now() - t0 < timeout) { try { if (fn()) return true; } catch (e) {} await sleep(step); }
@@ -96,30 +100,30 @@
     let modal = null;
     await until(() => (modal = findModal()) && modalDropdowns(modal).length > 0, 12000);
     await afterAjax();
-    await sleep(PACE.afterModalOpen);
+    await sleep(jitter(PACE.afterModalOpen));
     if (!modal) return 0;
     const items = new Set();
     for (const d of modalDropdowns(modal)) {
       const text = d.textContent.trim();
       const m = d.id.match(/status_dropdown_(\d+)/) || (d.className || '').match(/status_dropdown_(\d+)/);
-      if (m && text.includes('פעיל') && !text.includes('נמצא בדוח')) items.add(m[1]);
+      if (m && SOURCE_STATUS.test(text) && !text.includes('נמצא בדוח')) items.add(m[1]);
     }
     let n = 0;
     for (const id of items) {
-      try { change_status_ajax_leads_sale_item(parseInt(id), 74); await afterAjax(); await sleep(PACE.afterUpdate); n++; } catch (e) {}
+      try { change_status_ajax_leads_sale_item(parseInt(id), 74); await afterAjax(); await sleep(jitter(PACE.afterUpdate)); n++; } catch (e) {}
     }
     const close = modal.querySelector('.close, [data-dismiss="modal"]');
     if (close) close.click();
     await until(() => !findModal(), 4000);
-    await sleep(PACE.afterModalClose);
+    await sleep(jitter(PACE.afterModalClose));
     return n;
   }
 
   async function updateStatus(row, saleId) {
     const mixed = !row.querySelector('a[id*="status_select"]') ||
-      [...row.querySelectorAll('a, span, div')].some(b => /^\d+\s+פעיל\s+ולא\s+נמצא/.test(b.textContent.trim()));
+      [...row.querySelectorAll('a, span, div')].some(b => { const t = b.textContent.trim(); return /^\d+\s+/.test(t) && SOURCE_STATUS.test(t); });
     if (!mixed) {
-      try { change_status_ajax_leads_sales(saleId, 74); await afterAjax(); await sleep(PACE.afterUpdate); return true; } catch (e) { return false; }
+      try { change_status_ajax_leads_sales(saleId, 74); await afterAjax(); await sleep(jitter(PACE.afterUpdate)); return true; } catch (e) { return false; }
     }
     return (await updateLineStatuses(row)) > 0;
   }
@@ -171,11 +175,16 @@
     const url = new URL(window.location.href);
     const pg = parseInt(url.searchParams.get('pg') || '1');
     // A NEW run always starts on page 1 (the tab may still sit on a page past the end from an earlier run -> 0 rows).
-    if (!stats.started) {
-      stats.started = true; save();
-      if (pg !== 1) { setStatus('מתחיל מעמוד 1...'); url.searchParams.set('pg', 1); await sleep(800); window.location.href = url.toString(); return; }
+    const fi = stats.filterIdx || 0;
+    const cur = FILTERS[fi];
+    if (!stats.started || String(url.searchParams.get('filter')) !== String(cur.id)) {
+      stats.started = true; stats.filterIdx = fi; save();
+      if (pg !== 1 || String(url.searchParams.get('filter')) !== String(cur.id)) {
+        setStatus(`עובר לרשימה "${cur.name}"...`); url.searchParams.set('filter', cur.id); url.searchParams.set('pg', 1);
+        await sleep(1000); window.location.href = url.toString(); return;
+      }
     }
-    addLog(`עמוד ${pg}: ${rows.length} שורות (${rowMethod}), ${codes.size} קודים מהאקסל`, '#1a73e8');
+    addLog(`${cur.name} · עמוד ${pg}: ${rows.length} שורות, ${codes.size} קודים מהאקסל`, '#1a73e8');
 
     let updatedHere = 0, newHere = 0;
     for (let i = 0; i < rows.length; i++) {
@@ -187,7 +196,7 @@
       handled.add(key); newHere++; stats.total++;
       const name = getCustomerName(row);
       const rc = rowCodes(row);
-      setStatus(`עמוד ${pg} · ${i + 1}/${rows.length}`);
+      setStatus(`${cur.name} · עמוד ${pg} · ${i + 1}/${rows.length}`);
       if (!rc.length) { stats.skipped++; addLog(`${name} - אין קוד לקוח בשורה`, '#e65100'); showStats(); continue; }
       const hit = rc.find(c => codes.has(c));
       if (!hit) { stats.skipped++; showStats(); continue; }
@@ -204,14 +213,21 @@
       const sample = [...document.querySelectorAll('tr')].map(t => t.textContent.replace(/\s+/g, ' ').trim()).filter(x => /\d{6,}/.test(x)).slice(0, 2);
       sample.forEach(x => addLog('דוגמה: ' + x.slice(0, 160), '#888'));
       addLog(`עמוד ${pg} ריק (${document.querySelectorAll('table').length} טבלאות, ${trs} שורות tr, ${withCode} עם "קוד לקוח")`, '#888');
+      if (fi + 1 < FILTERS.length) {
+        const nx = FILTERS[fi + 1];
+        stats.filterIdx = fi + 1; save();
+        addLog(`סיימתי "${cur.name}", עובר ל"${nx.name}"`, '#1a73e8');
+        url.searchParams.set('filter', nx.id); url.searchParams.set('pg', 1);
+        await sleep(jitter(PACE.beforeNextPage)); window.location.href = url.toString(); return;
+      }
       return finish();
     }
     // Updated rows leave this filtered list, so the next rows moved up into THIS page: check it again.
     // Only a page where nothing new was found moves on.
-    if (updatedHere > 0) { setStatus(`עמוד ${pg}: ${updatedHere} עודכנו, בודק שוב את אותו עמוד`); await sleep(PACE.beforeNextPage); window.location.reload(); return; }
+    if (updatedHere > 0) { setStatus(`עמוד ${pg}: ${updatedHere} עודכנו, בודק שוב את אותו עמוד`); await sleep(jitter(PACE.beforeNextPage)); window.location.reload(); return; }
     url.searchParams.set('pg', pg + 1);
     setStatus(`עובר לעמוד ${pg + 1}`);
-    await sleep(PACE.beforeNextPage);
+    await sleep(jitter(PACE.beforeNextPage));
     window.location.href = url.toString();
   } catch (e) {
     console.error('CRM Updater error', e);

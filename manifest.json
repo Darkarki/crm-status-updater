@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "CRM Status Updater - TicTac",
-  "version": "1.3",
+  "version": "1.4",
   "description": "עדכון אוטומטי של סטטוס לקוחות לפי דוח אקסל",
   "permissions": ["activeTab", "scripting", "tabs", "storage", "webNavigation"],
   "host_permissions": ["https://tictac.moked-crm.co.il/*"],

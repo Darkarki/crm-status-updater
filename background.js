@@ -3,7 +3,7 @@
 chrome.webNavigation.onCompleted.addListener(async function(details) {
   if (details.frameId !== 0) return;
   if (!details.url.includes('tictac.moked-crm.co.il')) return;
-  if (!details.url.includes('filter=250')) return;
+  if (!/[?&]filter=(250|35|63)(&|$)/.test(details.url)) return;   // the lists the runner goes through
 
   const data = await chrome.storage.local.get(['crmUpdaterRunning', 'crmUpdaterCodes', 'crmUpdaterStats']);
   if (!data.crmUpdaterRunning || !data.crmUpdaterCodes) return;
