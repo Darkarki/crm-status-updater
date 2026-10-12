@@ -22,6 +22,9 @@
   const handled = new Set(stats.handled || []);
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
+  // PACE: minimum pauses on top of "wait until the CRM is done" (too fast made the CRM skip pages and hang).
+  // Raise these numbers if it still runs ahead of the CRM.
+  const PACE = { afterUpdate: 800, afterModalOpen: 700, afterModalClose: 600, beforeNextPage: 1500, tableStable: 1000 };
   async function until(fn, timeout = 10000, step = 80) {
     const t0 = Date.now();
     while (Date.now() - t0 < timeout) { try { if (fn()) return true; } catch (e) {} await sleep(step); }
@@ -72,6 +75,7 @@
     let modal = null;
     await until(() => (modal = findModal()) && modalDropdowns(modal).length > 0, 12000);
     await afterAjax();
+    await sleep(PACE.afterModalOpen);
     if (!modal) return 0;
     const items = new Set();
     for (const d of modalDropdowns(modal)) {
@@ -81,18 +85,19 @@
     }
     let n = 0;
     for (const id of items) {
-      try { change_status_ajax_leads_sale_item(parseInt(id), 74); await afterAjax(); n++; } catch (e) {}
+      try { change_status_ajax_leads_sale_item(parseInt(id), 74); await afterAjax(); await sleep(PACE.afterUpdate); n++; } catch (e) {}
     }
     const close = modal.querySelector('.close, [data-dismiss="modal"]');
     if (close) close.click();
     await until(() => !findModal(), 4000);
+    await sleep(PACE.afterModalClose);
     return n;
   }
 
   async function updateStatus(row, saleId) {
     const mixed = [...row.querySelectorAll('a, span, div')].some(b => /^\d+\s+פעיל\s+ולא\s+נמצא/.test(b.textContent.trim()));
     if (!mixed) {
-      try { change_status_ajax_leads_sales(saleId, 74); await afterAjax(); return true; } catch (e) { return false; }
+      try { change_status_ajax_leads_sales(saleId, 74); await afterAjax(); await sleep(PACE.afterUpdate); return true; } catch (e) { return false; }
     }
     return (await updateLineStatuses(row)) > 0;
   }
@@ -132,6 +137,13 @@
     // wait for the table instead of a fixed delay (an empty last page simply has no rows)
     await until(() => document.querySelectorAll('tr.middle.info').length > 0 || document.readyState === 'complete' && Date.now() - performance.timing.domContentLoadedEventEnd > 2500, 15000);
     await afterAjax(5000);
+    // the table must stop changing for a full second before we read it
+    let last = -1, stableSince = Date.now();
+    await until(() => {
+      const n = document.querySelectorAll('tr.middle.info').length;
+      if (n !== last) { last = n; stableSince = Date.now(); }
+      return Date.now() - stableSince >= PACE.tableStable && ajaxIdle();
+    }, 20000, 150);
     const rows = [...document.querySelectorAll('tr.middle.info')];
     const url = new URL(window.location.href);
     const pg = parseInt(url.searchParams.get('pg') || '1');
@@ -162,9 +174,10 @@
     if (rows.length === 0) return finish();
     // Updated rows leave this filtered list, so the next rows moved up into THIS page: check it again.
     // Only a page where nothing new was found moves on.
-    if (updatedHere > 0) { setStatus(`עמוד ${pg}: ${updatedHere} עודכנו, בודק שוב את אותו עמוד`); await sleep(300); window.location.reload(); return; }
+    if (updatedHere > 0) { setStatus(`עמוד ${pg}: ${updatedHere} עודכנו, בודק שוב את אותו עמוד`); await sleep(PACE.beforeNextPage); window.location.reload(); return; }
     url.searchParams.set('pg', pg + 1);
     setStatus(`עובר לעמוד ${pg + 1}`);
+    await sleep(PACE.beforeNextPage);
     window.location.href = url.toString();
   })();
 
