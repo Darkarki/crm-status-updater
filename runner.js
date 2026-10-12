@@ -63,29 +63,34 @@
       m = (a.getAttribute('onclick') || '').match(/change_status_ajax_leads_sales\((\d+)/);
       if (m) return m[1];
     }
-    const ml = row.querySelector('a[data-toggle="modal"]');
-    m = ml && (ml.getAttribute('onclick') || '').match(/le_modal_load\((\d+)/);
-    return m ? m[1] : null;
+    for (const a of row.querySelectorAll('a[onclick*="modal_load"]')) {
+      m = (a.getAttribute('onclick') || '').match(/(?:sale|le)_modal_load\((\d+)/);
+      if (m) return m[1];
+    }
+    const pk = row.querySelector('#ORDERID[data-pk], [data-pk]');
+    return pk ? pk.getAttribute('data-pk') : null;
   }
 
   // Customer rows. The CRM's classic markup is tr.middle.info; if that is gone (markup change, or the rows come in
   // later by AJAX), fall back to the innermost table rows that contain "קוד לקוח" and a status/modal link.
   let rowMethod = '';
   function findRows() {
-    const classic = [...document.querySelectorAll('tr.middle.info')];
-    if (classic.length) { rowMethod = 'tr.middle.info'; return classic; }
-    const LINK = 'a[id*="status_select"], a[onclick*="change_status"], a[onclick*="le_modal_load"], a[data-toggle="modal"]';
+    // Real markup (snapshot 2026-10-12): customers are <tr class="middle warning"> (yellow) AND <tr class="middle info">
+    // (blue); the old selector tr.middle.info saw only the blue ones (3 of 20 on a page). Header rows have no code.
+    const rows = [...document.querySelectorAll('tr.middle')].filter(tr => /קוד\s*לקוח/.test(tr.textContent));
+    rowMethod = 'tr.middle + קוד לקוח';
+    if (rows.length) return rows;
+    const LINK = 'a[id*="status_select"], a[onclick*="change_status"], a[onclick*="modal_load"], a[data-toggle="modal"]';
     const cands = [...document.querySelectorAll('tr')].filter(tr => tr.querySelector(LINK));
-    const inner = cands.filter(tr => !cands.some(o => o !== tr && tr.contains(o)));
-    rowMethod = 'שורות עם כפתור סטטוס';
-    return inner;
+    rowMethod = 'שורות עם כפתור';
+    return cands.filter(tr => !cands.some(o => o !== tr && tr.contains(o)));
   }
 
   const findModal = () => [...document.querySelectorAll('.modal')].find(m => m.offsetHeight > 0 && m.offsetWidth > 0) || null;
   const modalDropdowns = modal => modal.querySelectorAll('[class*="status_dropdown_"], [id^="status_dropdown_"]');
 
   async function updateLineStatuses(row) {
-    const link = row.querySelector('a[data-toggle="modal"]');
+    const link = row.querySelector('a[onclick*="modal_load"][onclick*="name"]') || row.querySelector('a[onclick*="modal_load"]') || row.querySelector('a[data-toggle="modal"]');
     if (!link) return 0;
     link.click();
     let modal = null;
@@ -111,7 +116,8 @@
   }
 
   async function updateStatus(row, saleId) {
-    const mixed = [...row.querySelectorAll('a, span, div')].some(b => /^\d+\s+פעיל\s+ולא\s+נמצא/.test(b.textContent.trim()));
+    const mixed = !row.querySelector('a[id*="status_select"]') ||
+      [...row.querySelectorAll('a, span, div')].some(b => /^\d+\s+פעיל\s+ולא\s+נמצא/.test(b.textContent.trim()));
     if (!mixed) {
       try { change_status_ajax_leads_sales(saleId, 74); await afterAjax(); await sleep(PACE.afterUpdate); return true; } catch (e) { return false; }
     }
@@ -152,18 +158,6 @@
   (async () => { try {
     // wait for the table instead of a fixed delay (an empty last page simply has no rows)
     await until(() => findRows().length > 0, 20000, 200);
-    // DIAGNOSTIC SNAPSHOT: save this page (the real DOM after the CRM rendered it) to Downloads once per run,
-    // so the developer can see exactly how customer rows look. Remove when row detection is confirmed.
-    if (!stats.snapshotSaved) {
-      try {
-        await sleep(4000);
-        const blob = new Blob(['<!-- ' + location.href + ' -->' + String.fromCharCode(10) + document.documentElement.outerHTML], { type: 'text/html' });
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'crm-snapshot.html';
-        document.body.appendChild(a); a.click(); a.remove();
-        stats.snapshotSaved = true; save();
-        addLog('נשמר עותק של הדף ל-Downloads (crm-snapshot.html)', '#1a73e8');
-      } catch (e) { addLog('לא הצלחתי לשמור עותק: ' + e.message, '#c62828'); }
-    }
     setStatus('ממתין לטבלה...');
     await afterAjax(2500);
     // the table must stop changing for a full second before we read it
