@@ -40,6 +40,9 @@
     const re = /קוד\s*לקוח[:\s]*([A-Za-z]*[\s-]*\d[\d\s-]*)/g;
     let m;
     while ((m = re.exec(t))) { const n = norm(m[1]); if (n) out.add(n); }
+    if (!out.size) {                                   // no "קוד לקוח" label: try every number in the row against the report
+      for (const tok of t.match(/\d[\d-]{4,12}\d/g) || []) { const n = norm(tok); if (n && n.length >= 6 && codes.has(n)) out.add(n); }
+    }
     return [...out];
   }
 
@@ -71,10 +74,10 @@
   function findRows() {
     const classic = [...document.querySelectorAll('tr.middle.info')];
     if (classic.length) { rowMethod = 'tr.middle.info'; return classic; }
-    const hasCode = tr => /קוד\s*לקוח/.test(tr.textContent);
-    const cands = [...document.querySelectorAll('tr')].filter(tr => hasCode(tr) && (tr.querySelector('a[id*="status_select"], a[onclick*="change_status"], a[data-toggle="modal"]')));
+    const LINK = 'a[id*="status_select"], a[onclick*="change_status"], a[onclick*="le_modal_load"], a[data-toggle="modal"]';
+    const cands = [...document.querySelectorAll('tr')].filter(tr => tr.querySelector(LINK));
     const inner = cands.filter(tr => !cands.some(o => o !== tr && tr.contains(o)));
-    rowMethod = 'קוד לקוח';
+    rowMethod = 'שורות עם כפתור סטטוס';
     return inner;
   }
 
@@ -192,6 +195,8 @@
 
     if (rows.length === 0) {
       const trs = document.querySelectorAll('tr').length, withCode = [...document.querySelectorAll('tr')].filter(t => /קוד\s*לקוח/.test(t.textContent)).length;
+      const sample = [...document.querySelectorAll('tr')].map(t => t.textContent.replace(/\s+/g, ' ').trim()).filter(x => /\d{6,}/.test(x)).slice(0, 2);
+      sample.forEach(x => addLog('דוגמה: ' + x.slice(0, 160), '#888'));
       addLog(`עמוד ${pg} ריק (${document.querySelectorAll('table').length} טבלאות, ${trs} שורות tr, ${withCode} עם "קוד לקוח")`, '#888');
       return finish();
     }
