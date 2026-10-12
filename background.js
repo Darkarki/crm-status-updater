@@ -11,7 +11,7 @@ chrome.webNavigation.onCompleted.addListener(async function(details) {
   console.log('[BG] Auto-resuming on page load');
 
   // Wait for page to fully render
-  await new Promise(r => setTimeout(r, 3500));
+  // no fixed wait: runner.js waits for the table and the CRM's AJAX itself
 
   try {
     // Inject codes into MAIN world
