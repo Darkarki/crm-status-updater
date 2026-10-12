@@ -32,7 +32,7 @@
   }
   // the CRM uses jQuery for its AJAX; wait until every request it started is finished
   const ajaxIdle = () => !(window.jQuery && window.jQuery.active > 0);
-  async function afterAjax(timeout = 12000) { await sleep(60); await until(ajaxIdle, timeout); }
+  async function afterAjax(timeout = 2500) { await sleep(150); await until(ajaxIdle, timeout); }
 
   function rowCodes(row) {
     const out = new Set();
@@ -133,17 +133,18 @@
   const save = () => { stats.handled = [...handled]; window.postMessage({ crmUpdater: true, type: 'saveStats', stats }, '*'); };
 
   // ---------------------------------------------------------------- main
-  (async () => {
+  (async () => { try {
     // wait for the table instead of a fixed delay (an empty last page simply has no rows)
     await until(() => document.querySelectorAll('tr.middle.info').length > 0 || document.readyState === 'complete' && Date.now() - performance.timing.domContentLoadedEventEnd > 2500, 15000);
-    await afterAjax(5000);
+    setStatus('ממתין לטבלה...');
+    await afterAjax(2500);
     // the table must stop changing for a full second before we read it
     let last = -1, stableSince = Date.now();
     await until(() => {
       const n = document.querySelectorAll('tr.middle.info').length;
       if (n !== last) { last = n; stableSince = Date.now(); }
-      return Date.now() - stableSince >= PACE.tableStable && ajaxIdle();
-    }, 20000, 150);
+      return Date.now() - stableSince >= PACE.tableStable;
+    }, 8000, 150);
     const rows = [...document.querySelectorAll('tr.middle.info')];
     const url = new URL(window.location.href);
     const pg = parseInt(url.searchParams.get('pg') || '1');
@@ -152,7 +153,7 @@
       stats.started = true; save();
       if (pg !== 1) { setStatus('מתחיל מעמוד 1...'); url.searchParams.set('pg', 1); await sleep(800); window.location.href = url.toString(); return; }
     }
-    addLog(`עמוד ${pg}: ${rows.length} שורות`, '#1a73e8');
+    addLog(`עמוד ${pg}: ${rows.length} שורות, ${codes.size} קודים מהאקסל`, '#1a73e8');
 
     let updatedHere = 0, newHere = 0;
     for (let i = 0; i < rows.length; i++) {
@@ -187,7 +188,11 @@
     setStatus(`עובר לעמוד ${pg + 1}`);
     await sleep(PACE.beforeNextPage);
     window.location.href = url.toString();
-  })();
+  } catch (e) {
+    console.error('CRM Updater error', e);
+    setStatus('שגיאה: ' + (e && e.message || e));
+    addLog('שגיאה: ' + (e && e.stack || e), '#c62828');
+  } })();
 
   function finish() {
     setStatus(`הסתיים: ${stats.updated} עודכנו`);
